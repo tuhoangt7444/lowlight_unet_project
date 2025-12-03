@@ -2,6 +2,8 @@ import os
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, random_split
+from tqdm.auto import tqdm
+
 
 from config import (
     CLEAN_DIR,
@@ -49,26 +51,35 @@ def main():
 
     best_val_psnr = 0.0
 
-    for epoch in range(1, NUM_EPOCHS + 1):
-        # ---- TRAIN ----
+    # ================== VÒNG LẶP TRAIN + TQDM ==================
+    for epoch in range(NUM_EPOCHS):
         model.train()
         running_loss = 0.0
 
-        for i, (inp, target) in enumerate(train_loader, 1):
-            inp = inp.to(DEVICE)
-            target = target.to(DEVICE)
+        # thanh tiến trình cho từng batch trong 1 epoch
+        progress_bar = tqdm(
+            train_loader,
+            desc=f"Epoch {epoch+1}/{NUM_EPOCHS}",
+            unit="batch"
+        )
+
+        for degraded, clean in progress_bar:
+            degraded = degraded.to(DEVICE)
+            clean = clean.to(DEVICE)
 
             optimizer.zero_grad()
-            out = model(inp)
-            loss = criterion(out, target)
+            output = model(degraded)
+            loss = criterion(output, clean)
             loss.backward()
             optimizer.step()
 
             running_loss += loss.item()
 
-            if i % PRINT_EVERY == 0 or i == len(train_loader):
-                avg_loss = running_loss / i
-                print(f"[Epoch {epoch}/{NUM_EPOCHS}] [Batch {i}/{len(train_loader)}] Loss: {avg_loss:.4f}")
+            # hiển thị loss ngay trên thanh %
+            progress_bar.set_postfix({"loss": f"{loss.item():.4f}"})
+
+        epoch_loss = running_loss / len(train_loader)
+        print(f"[Epoch {epoch+1}/{NUM_EPOCHS}] Train loss: {epoch_loss:.4f}")
 
         # ---- VALIDATION ----
         model.eval()
@@ -87,7 +98,7 @@ def main():
         val_loss /= len(val_loader)
         val_psnr /= len(val_loader)
 
-        print(f"Epoch {epoch}: Val Loss = {val_loss:.4f}, Val PSNR = {val_psnr:.2f} dB")
+        print(f"[Epoch {epoch+1}/{NUM_EPOCHS}] Val Loss = {val_loss:.4f}, Val PSNR = {val_psnr:.2f} dB")
 
         # Lưu best model
         if val_psnr > best_val_psnr:
